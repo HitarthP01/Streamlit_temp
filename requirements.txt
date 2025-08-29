@@ -26,12 +26,12 @@ yfinance>=0.2.18
 requests>=2.31.0
 beautifulsoup4>=4.12.0
 
-# Database
-sqlite3
+# Built-in modules (no installation needed):
+# - sqlite3 (built into Python)
+# - os, glob (built into Python)
 
 # Utilities
-glob2>=0.7
-os-sys>=2.1.4
+# Note: os and glob are built-in, no need to install
 
 # Optional: For better performance
 # accelerate>=0.20.0
