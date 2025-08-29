@@ -3,11 +3,29 @@ import pandas as pd
 from PIL import Image
 import os
 import glob
+import backup
+
 
 # Load your dataframe
-df_options = pd.read_csv('options.csv')
+def assign_df(symbol):
+    df_options = pd.read_sql(f'SELECT * FROM options_{symbol}', backup.DatabaseManager().get_connection())
+    return df_options
 
-def analyze_options_chart_image_simple(image_path):
+# Initialize df_options variable
+df_options = None
+try:
+    # Try to load from CSV first
+    if os.path.exists('options.csv'):
+        df_options = pd.read_csv('options.csv')
+    else:
+        # If no CSV, create empty DataFrame
+        df_options = pd.DataFrame()
+except Exception as e:
+    print(f"Warning: Could not load options data: {e}")
+    df_options = pd.DataFrame()
+
+
+def analyze_options_chart_image_simple(image_path, df_options):
     """
     Simple image analysis - extract basic information about the image
     """
@@ -85,7 +103,7 @@ def comprehensive_options_analysis():
         print(f"\n📊 Found {len(image_files)} image(s) to analyze:")
         for img in image_files:
             print(f"   📈 {img}")
-            analyze_options_chart_image_simple(img)
+            analyze_options_chart_image_simple(img, df_options)
             print()
     else:
         print("\n⚠️ No chart images found in current directory")
@@ -95,6 +113,17 @@ def comprehensive_options_analysis():
     print("\n" + "="*60)
     print("📊 OPTIONS DATA ANALYSIS")
     print("="*60)
+    
+    # Check if we have options data
+    if df_options is None or df_options.empty:
+        print("\n⚠️ No options data available for analysis")
+        print("   Please ensure options.csv exists or run backup.py first to fetch data")
+        return {
+            'pc_ratio': 0,
+            'total_volume': 0,
+            'ntm_volume': 0,
+            'image_files': image_files
+        }
     
     current_price = 45.57
     
@@ -149,32 +178,38 @@ def comprehensive_options_analysis():
     }
 
 # Main execution
-print("🔬 OPTIONS CHART ANALYSIS SYSTEM")
-print("=" * 50)
+# Main execution - only run when script is executed directly, not when imported
+if __name__ == "__main__":
+    print("🔬 OPTIONS CHART ANALYSIS SYSTEM")
+    print("=" * 50)
 
-print(f"📊 Loaded {len(df_options)} options contracts from CSV")
+    if df_options is not None and not df_options.empty:
+        print(f"📊 Loaded {len(df_options)} options contracts from CSV")
+    else:
+        print("⚠️ No options data loaded. Please ensure options.csv exists or run backup.py first.")
 
-# Run comprehensive analysis
-analysis_results = comprehensive_options_analysis()
+    # Run comprehensive analysis
+    analysis_results = comprehensive_options_analysis()
 
-print(f"\n✅ Analysis Complete!")
-print(f"📊 Total Volume Analyzed: {analysis_results['total_volume']:,}")
-print(f"📈 Put-Call Ratio: {analysis_results['pc_ratio']:.2f}")
-print(f"🖼️ Images Found: {len(analysis_results['image_files'])}")
+    print(f"\n✅ Analysis Complete!")
+    if 'total_volume' in analysis_results:
+        print(f"📊 Total Volume Analyzed: {analysis_results['total_volume']:,}")
+        print(f"📈 Put-Call Ratio: {analysis_results['pc_ratio']:.2f}")
+    print(f"🖼️ Images Found: {len(analysis_results.get('image_files', []))}")
 
-if analysis_results['image_files']:
-    print(f"\n💡 INTERPRETATION GUIDE:")
-    print(f"   • The chart should show call volume bars concentrated above ${45.57} (current price)")
-    print(f"   • Put volume bars should be visible around ${44}-${45} range")
-    print(f"   • High volume at specific strikes indicates important price levels")
-    print(f"   • Near-term expiry dominance suggests event-driven activity")
-else:
-    print(f"\n💡 TO ADD CHART ANALYSIS:")
-    print(f"   • Run temp_chart_creator.py to create options_chain_analysis.png")
-    print(f"   • Then run this script again to analyze the chart")
+    if analysis_results.get('image_files'):
+        print(f"\n💡 INTERPRETATION GUIDE:")
+        print(f"   • The chart should show call volume bars concentrated above current price")
+        print(f"   • Put volume bars should be visible around near-term strikes")
+        print(f"   • High volume at specific strikes indicates important price levels")
+        print(f"   • Near-term expiry dominance suggests event-driven activity")
+    else:
+        print(f"\n💡 TO ADD CHART ANALYSIS:")
+        print(f"   • Run temp_chart_creator.py to create options_chain_analysis.png")
+        print(f"   • Then run this script again to analyze the chart")
 
-print(f"\n🔄 For visual analysis, save chart images in this directory (.png, .jpg, .jpeg)")
-print("   The script will automatically detect and analyze them!")
+    print(f"\n🔄 For visual analysis, save chart images in this directory (.png, .jpg, .jpeg)")
+    print("   The script will automatically detect and analyze them!")
 
 def analyze_multiple_chart_images(image_directory=".", image_extensions=["*.png", "*.jpg", "*.jpeg"]):
     """
@@ -203,7 +238,7 @@ def analyze_multiple_chart_images(image_directory=".", image_extensions=["*.png"
         # Simple analysis instead of AI model
         image_analysis = {
             'image_path': image_path,
-            'analysis': analyze_options_chart_image_simple(image_path)
+            'analysis': analyze_options_chart_image_simple(image_path, df_options)
         }
         
         results.append(image_analysis)
@@ -236,6 +271,6 @@ def enhanced_image_analysis_with_options_data(image_path, options_df):
     print(f"Context: {context}")
     
     # Since we can't use Florence-2, provide contextual analysis
-    return analyze_options_chart_image_simple(image_path)
+    return analyze_options_chart_image_simple(image_path, options_df)
 
 # Main execution - moved to the comprehensive_options_analysis function

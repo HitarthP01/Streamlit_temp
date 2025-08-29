@@ -10,11 +10,11 @@ plotly>=5.14.0
 # Image Processing
 Pillow>=9.5.0
 
-# AI/ML Models
-torch>=2.0.0
-transformers>=4.30.0
-einops>=0.6.1
-timm>=0.9.2
+# AI/ML Models (Optional - for future enhancements)
+# torch>=2.0.0
+# transformers>=4.30.0
+# einops>=0.6.1
+# timm>=0.9.2
 
 # Web Framework
 streamlit>=1.25.0
@@ -29,11 +29,14 @@ aiohttp>=3.8.0
 
 # Built-in modules (no installation needed):
 # - sqlite3 (built into Python)
-# - os, glob (built into Python)
+# - os, glob, time, logging, datetime, typing, asyncio, traceback, sys (built into Python)
+
+# Database
+# sqlite3 is built-in to Python
 
 # Utilities
-# Note: os and glob are built-in, no need to install
+# os, glob, time, logging, datetime, typing, asyncio, traceback, sys are all built-in
 
-# Optional: For better performance
+# Optional: For better performance (commented out unless needed)
 # accelerate>=0.20.0
 # huggingface_hub[hf_xet]>=0.15.0

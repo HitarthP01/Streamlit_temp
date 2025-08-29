@@ -21,6 +21,9 @@ from typing import Optional, List, Dict
 import asyncio
 import aiohttp
 import traceback
+import temp
+import temp_chart_creator
+
 
 
 st.set_page_config(page_title="Active Stocks backup.py", page_icon="fire")
@@ -1541,6 +1544,83 @@ class StockDataFetcher:
             if conn:
                 conn.close()
 
+class OptionsAnalyzer:
+    """Enhanced options analysis using functions from temp.py and temp_chart_creator.py"""
+    
+    def __init__(self, options_df: pd.DataFrame):
+        self.options_df = options_df
+        self.current_price = self._get_current_price()
+    
+    def _get_current_price(self) -> float:
+        """Extract current price from options data"""
+        if 'current_stock_price' in self.options_df.columns:
+            current_prices = self.options_df['current_stock_price'].dropna()
+            if not current_prices.empty:
+                return current_prices.iloc[0]
+        return 45.57  # fallback value
+    
+    def perform_comprehensive_analysis(self) -> dict:
+        """Perform comprehensive options analysis similar to temp.py"""
+        analysis_results = {}
+        
+        # Volume analysis by strike
+        volume_by_strike = self.options_df.groupby(['strike', 'option_type'])['volume'].sum().unstack(fill_value=0)
+        
+        # Calculate key metrics
+        total_call_vol = self.options_df[self.options_df['option_type'] == 'call']['volume'].sum()
+        total_put_vol = self.options_df[self.options_df['option_type'] == 'put']['volume'].sum()
+        pc_ratio = total_put_vol / total_call_vol if total_call_vol > 0 else 0
+        
+        # Near-the-money analysis
+        ntm_strikes = self.options_df[abs(self.options_df['strike'] - self.current_price) <= 2.0]
+        ntm_volume = ntm_strikes['volume'].sum()
+        
+        # Top volume strikes
+        strike_volumes = self.options_df.groupby('strike')['volume'].sum().sort_values(ascending=False)
+        
+        analysis_results = {
+            'pc_ratio': pc_ratio,
+            'total_volume': self.options_df['volume'].sum(),
+            'ntm_volume': ntm_volume,
+            'ntm_percentage': (ntm_volume / self.options_df['volume'].sum() * 100) if self.options_df['volume'].sum() > 0 else 0,
+            'top_strikes': strike_volumes.head(5).to_dict(),
+            'volume_by_strike': volume_by_strike,
+            'current_price': self.current_price,
+            'sentiment': 'Bearish' if pc_ratio > 1 else 'Bullish'
+        }
+        
+        return analysis_results
+    
+    def generate_analysis_text(self, analysis_results: dict) -> str:
+        """Generate detailed analysis text similar to temp.py output"""
+        text = f"""
+        🔍 **COMPREHENSIVE OPTIONS ANALYSIS**
+        
+        **Key Metrics:**
+        • Put-Call Volume Ratio: {analysis_results['pc_ratio']:.2f} ({analysis_results['sentiment']} sentiment)
+        • Total Volume Analyzed: {analysis_results['total_volume']:,}
+        • Near-the-Money Volume (±$2): {analysis_results['ntm_volume']:,} ({analysis_results['ntm_percentage']:.1f}% of total)
+        • Current Stock Price: ${analysis_results['current_price']:.2f}
+        
+        **Top Volume Strikes:**
+        """
+        
+        for strike, volume in analysis_results['top_strikes'].items():
+            distance = abs(strike - analysis_results['current_price'])
+            moneyness = "ITM" if strike <= analysis_results['current_price'] else "OTM"
+            text += f"\n• ${strike:.0f}: {volume:,} volume | {moneyness} ({distance:+.2f} from current)"
+        
+        return text
+    
+    def create_enhanced_chart_with_analysis(self, symbol: str):
+        """Create enhanced chart similar to temp_chart_creator.py"""
+        try:
+            # Call the chart creation function from temp_chart_creator
+            chart_filename = temp_chart_creator.create_sample_options_chart()
+            return f"Enhanced chart created: {chart_filename}"
+        except Exception as e:
+            return f"Error creating enhanced chart: {str(e)}"
+
 class StockVisualizer:
     @staticmethod
     def create_advanced_chart(df: pd.DataFrame, symbol: str) -> go.Figure:
@@ -1864,7 +1944,7 @@ def main():
     display_df = display_df.drop(columns=[col for col in columns_to_remove if col in display_df.columns])
     
     # volume column should be displayed in string human redable
-    display_df['volume'] = display_df['volume'].apply(human_readable)
+    # display_df['volume'] = display_df['volume'].apply(human_readable)
     
     # Add clickable functionality with on_select
     selected_rows = st.dataframe(
@@ -1899,6 +1979,7 @@ def main():
                 help="Enter any valid stock ticker symbol or click on a stock from the table above",
                 key="stock_search_input"
             ).upper().strip()
+            
         else:
             st.error("No stock symbols available")
             return
@@ -2030,6 +2111,7 @@ def main():
             
             if options_df is None:
                 st.info(f"No cached options data found for {options_symbol}. Click 'Fetch Options Data' to load live data.")
+        analys_df = temp.assign_df(selected_symbol)
         
         if options_df is not None and not options_df.empty:
             # Display options metrics
@@ -2068,7 +2150,99 @@ def main():
                     value=f"{avg_iv:.2%}" if pd.notna(avg_iv) else "N/A"
                 )
             
-            # Options visualization
+            # Enhanced Analysis Section using temp.py and temp_chart_creator.py
+            st.subheader("🔬 Advanced Options Analysis")
+            
+            # Create enhanced analyzer
+            analyzer = OptionsAnalyzer(options_df)
+            analysis_results = analyzer.perform_comprehensive_analysis()
+            
+            # Display comprehensive analysis
+            with st.expander("📊 Comprehensive Analysis (Based on temp.py)", expanded=True):
+                analysis_text = analyzer.generate_analysis_text(analysis_results)
+                st.markdown(analysis_text)
+                
+                # Volume by Strike Analysis
+                st.subheader("📊 Volume Analysis by Strike")
+                
+                # Create columns for detailed breakdown
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.write("**Call Volume by Strike:**")
+                    if 'call' in analysis_results['volume_by_strike'].columns:
+                        call_strikes = analysis_results['volume_by_strike']['call'].sort_index(ascending=False)
+                        for strike, volume in call_strikes.head(10).items():
+                            if volume > 0:
+                                distance = strike - analysis_results['current_price']
+                                moneyness = "ITM" if strike <= analysis_results['current_price'] else "OTM"
+                                st.write(f"• ${strike:.0f}: {volume:,} | {moneyness} ({distance:+.2f})")
+                
+                with col2:
+                    st.write("**Put Volume by Strike:**")
+                    if 'put' in analysis_results['volume_by_strike'].columns:
+                        put_strikes = analysis_results['volume_by_strike']['put'].sort_index(ascending=False)
+                        for strike, volume in put_strikes.head(10).items():
+                            if volume > 0:
+                                distance = strike - analysis_results['current_price']
+                                moneyness = "ITM" if strike >= analysis_results['current_price'] else "OTM"
+                                st.write(f"• ${strike:.0f}: {volume:,} | {moneyness} ({distance:+.2f})")
+            
+            # Enhanced Chart Creation
+            with st.expander("📈 Enhanced Chart Analysis (Based on temp_chart_creator.py)"):
+                col1, col2 = st.columns([3, 1])
+                
+                with col2:
+                    create_enhanced_chart = st.button("🎨 Create Enhanced Chart", key="create_enhanced_chart")
+                
+                if create_enhanced_chart:
+                    with st.spinner("Creating enhanced options chart..."):
+                        # Temporarily save current options data to CSV for temp_chart_creator
+                        options_df.to_csv('options.csv', index=False)
+                        
+                        # Create enhanced chart using temp_chart_creator
+                        chart_result = analyzer.create_enhanced_chart_with_analysis(options_symbol)
+                        st.success(chart_result)
+                        
+                        # Display the created chart if it exists
+                        if os.path.exists('options_chain_analysis.png'):
+                            st.image('options_chain_analysis.png', caption=f"Enhanced Options Analysis for {options_symbol}")
+                        
+                        # Run textual analysis from temp_chart_creator
+                        try:
+                            with st.spinner("Running detailed textual analysis..."):
+                                # This will run the analysis from temp_chart_creator.py
+                                detailed_summary = temp_chart_creator.create_detailed_summary()
+                                st.text_area("Detailed Analysis Summary:", detailed_summary, height=300)
+                        except Exception as e:
+                            st.error(f"Error running detailed analysis: {str(e)}")
+            
+            # Image Analysis Section (from temp.py)
+            with st.expander("🖼️ Options Chart Image Analysis"):
+                st.write("**Available Chart Images for Analysis:**")
+                
+                # Look for chart images in the directory
+                image_files = []
+                for ext in ["*.png", "*.jpg", "*.jpeg"]:
+                    import glob
+                    image_files.extend(glob.glob(ext))
+                
+                if image_files:
+                    selected_image = st.selectbox("Select chart image to analyze:", image_files)
+                    
+                    if st.button("🔍 Analyze Chart Image", key="analyze_image"):
+                        with st.spinner("Analyzing chart image..."):
+                            # Use the image analysis function from temp.py
+                            # Correct syntax: temp.analyze_options_chart_image_simple(image_path, df_options)
+                            analysis_result = temp.analyze_options_chart_image_simple(selected_image, options_df)
+                            st.success(f"Image analysis completed")
+                            
+                            # Display the image
+                            st.image(selected_image, caption=f"Analyzed Chart: {selected_image}")
+                else:
+                    st.info("No chart images found. Create an enhanced chart first to enable image analysis.")
+
+            # Options visualization (original)
             st.subheader("📊 Options Chain Visualization")
             options_fig = visualizer.create_options_chart(options_df, options_symbol)
             st.plotly_chart(options_fig, use_container_width=True)
@@ -2230,7 +2404,6 @@ def main():
         
         elif fetch_options:
             st.error(f"Could not fetch options data for {options_symbol}. The stock may not have options or there may be a connectivity issue.")
-    
     # Footer
     st.markdown("---")
     st.markdown(
