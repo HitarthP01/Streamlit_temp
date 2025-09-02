@@ -214,6 +214,8 @@ class StockDataFetcher:
 # ...existing code...
     def fetch_most_active_stocks(_self) -> Optional[pd.DataFrame]:
         """Fetch most active stocks with better error handling"""
+
+        
         try:
             url = 'https://finance.yahoo.com/research-hub/screener/most_actives/'
             
@@ -313,11 +315,41 @@ class StockDataFetcher:
         if 'symbol' in df.columns:
             df['symbol'] = df['symbol'].str.split().str[-1].str.upper()
         
-        # Parse numeric columns
+        # Parse numeric columns with improved handling for concatenated values
         numeric_columns = ['price_intraday', 'change_amount', 'change_percent', 'pe_ratio']
         for col in numeric_columns:
             if col in df.columns:
-                df[col] = pd.to_numeric(df[col].str.replace(r'[^\d.-]', '', regex=True), errors='coerce')
+                # Special handling for change_percent which might have concatenated values
+                if col == 'change_percent':
+                    def clean_change_percent(val):
+                        if pd.isna(val) or val == '':
+                            return None
+                        val_str = str(val).strip()
+                        # If it contains multiple percentage values (space-separated), take the first one
+                        if ' ' in val_str and '%' in val_str:
+                            # Split by spaces and take the first valid percentage
+                            parts = val_str.split()
+                            for part in parts:
+                                if '%' in part or any(c.isdigit() for c in part):
+                                    clean_part = part.replace('%', '').replace('+', '').replace('$', '').replace(',', '')
+                                    try:
+                                        return float(clean_part)
+                                    except:
+                                        continue
+                            return None
+                        else:
+                            # Regular cleaning
+                            clean_val = val_str.replace('%', '').replace('+', '').replace('$', '').replace(',', '')
+                            clean_val = ''.join(c for c in clean_val if c.isdigit() or c in '.-')
+                            try:
+                                return float(clean_val) if clean_val else None
+                            except:
+                                return None
+                    
+                    df[col] = df[col].apply(clean_change_percent)
+                else:
+                    # Regular numeric parsing for other columns
+                    df[col] = pd.to_numeric(df[col].astype(str).str.replace(r'[^\d.-]', '', regex=True), errors='coerce')
         
         # Parse volume columns
         volume_columns = ['volume', 'avg_vol_3m']
@@ -327,73 +359,7 @@ class StockDataFetcher:
         
         return df
     
-                
-    # def fetch_option_chain(self, symbol: str, min_volume: int = 400) -> Optional[pd.DataFrame]:
-    #     """Fetch options chain data for a given symbol with volume filter"""
-    #     try:
-    #         with st.spinner(f"Fetching options data for {symbol}..."):
-    #             stock = yf.Ticker(symbol)
-    #             options = stock.options
-                
-    #             if not options:
-    #                 st.warning(f"No options available for {symbol}")
-    #                 return None
-
-    #             all_options_data = []
-                
-    #             # Fetch options for all expiration dates (limit to first 3 for performance)
-    #             for exp_date in options[:3]:  # Limit to first 3 expiration dates
-    #                 try:
-    #                     option_chain = stock.option_chain(exp_date)
-    #                     calls = option_chain.calls.copy()
-    #                     puts = option_chain.puts.copy()
-
-    #                     # Add metadata
-    #                     calls['type'] = 'call'
-    #                     calls['expiration_date'] = exp_date
-    #                     calls['symbol'] = symbol.upper()
-                        
-    #                     puts['type'] = 'put'
-    #                     puts['expiration_date'] = exp_date
-    #                     puts['symbol'] = symbol.upper()
-
-    #                     # Combine calls and puts
-    #                     exp_options = pd.concat([calls, puts], ignore_index=True)
-                        
-    #                     # Filter by volume
-    #                     if min_volume > 0:
-    #                         exp_options = exp_options[exp_options['volume'] >= min_volume]
-                        
-    #                     all_options_data.append(exp_options)
-                        
-    #                 except Exception as e:
-    #                     logger.warning(f"Error fetching options for {symbol} expiration {exp_date}: {e}")
-    #                     continue
-                
-    #             if not all_options_data:
-    #                 st.warning(f"No options data with volume >= {min_volume} found for {symbol}")
-    #                 return None
-                
-    #             # Combine all expiration dates
-    #             option_data = pd.concat(all_options_data, ignore_index=True)
-                
-    #             if option_data.empty:
-    #                 st.warning(f"No options data with volume >= {min_volume} found for {symbol}")
-    #                 return None
-                
-    #             # Clean and standardize the data
-    #             option_data = self._clean_options_data(option_data)
-                
-    #             # Save to database
-    #             self._save_options_to_db(option_data)
-                
-    #             return option_data
-                
-    #     except Exception as e:
-    #         st.error(f"Error fetching options chain for {symbol}: {str(e)}")
-    #         logger.error(f"Error fetching options chain for {symbol}: {e}")
-    #         return None
-    
+  
     def _clean_options_data(self, df: pd.DataFrame) -> pd.DataFrame:
         """Clean and standardize options data"""
         if df.empty:
@@ -1869,30 +1835,30 @@ def main():
     #     "📊 Data Source:",
     #     ["Live Data (Yahoo)", "Database Cache"]
     # )
-    stocks_df = data_fetcher.fetch_most_active_stocks()
+
+
+    # we will fetch the data from yfinance  only if the data for current date doesnt exist in the database.
+
+    # print for now from where we are fetching the data from
     
-    # Fetch most active stocks
-    # try:
-    #     if data_source == "Live Data (Yahoo)":
-    #         stocks_df = data_fetcher.fetch_most_active_stocks()
-    #     else:
-    #         with db_manager.get_connection() as conn:
-    #             today = datetime.now().strftime('%Y-%m-%d')
-    #             # today = "2025-08-27"
-    #             stocks_df = pd.read_sql_query(
-    #                 "SELECT * FROM most_active_stocks WHERE scrape_date = ? ORDER BY volume DESC",
-    #                 conn,
-    #                 params=(today,)
-    #             )
-        
-    #     if stocks_df is None or stocks_df.empty:
-    #         st.error("No stock data available. Please try refreshing or check your connection.")
-    #         return
-        
-    # except Exception as e:
-    #     st.error(f"Error loading stock data: {str(e)}")
-    #     return
-    
+    with db_manager.get_connection() as conn:
+        today = datetime.now().strftime('%Y-%m-%d')
+        existing_data = pd.read_sql_query(
+            "SELECT * FROM most_active_stocks WHERE scrape_date = ?",
+            conn,
+            params=(today,)
+        )
+        # print the below statement in streamlit only
+        st.write("Fetching data from:", "yfinance" if existing_data.empty else "database")
+        # print("Fetching data from:", "yfinance" if existing_data.empty else "database")
+        if not existing_data.empty:
+            stocks_df = existing_data
+        else:
+            stocks_df = data_fetcher.fetch_most_active_stocks()
+
+    # st.write(f"data frame columns: {stocks_df.columns.tolist()}")
+
+    # Display data source info
     # Market Overview
     st.subheader("📊 Market Overview")
     
@@ -1905,8 +1871,52 @@ def main():
             value=f"{total_volume:,.0f}" if total_volume > 0 else "N/A"
         )
     
+    # Define a common function to clean percentage values
+    def clean_percentage_value(val):
+        if pd.isna(val) or val == '':
+            return None
+        
+        val_str = str(val).strip()
+        # If it contains multiple values separated by spaces, take the first one
+        if ' ' in val_str and any(c in val_str for c in ['%', '+', '-']):
+            parts = val_str.split()
+            for part in parts:
+                if part.strip():  # Skip empty parts
+                    # Clean the part and try to convert
+                    clean_part = part.replace('%', '').replace('+', '').replace('$', '').replace(',', '')
+                    # Keep only digits, dots, and minus signs
+                    clean_part = ''.join(c for c in clean_part if c.isdigit() or c in '.-')
+                    if clean_part and clean_part != '-' and clean_part != '.':
+                        try:
+                            return float(clean_part)
+                        except:
+                            continue
+            return None
+        else:
+            # Single value cleaning
+            clean_val = val_str.replace('%', '').replace('+', '').replace('$', '').replace(',', '')
+            # Keep only digits, dots, and minus signs
+            clean_val = ''.join(c for c in clean_val if c.isdigit() or c in '.-')
+            if clean_val and clean_val != '-' and clean_val != '.':
+                try:
+                    return float(clean_val)
+                except:
+                    return None
+            return None
+    
+    # Clean the change_percent column once for all calculations
+    if 'change_percent' in stocks_df.columns:
+        cleaned_change_percent = stocks_df['change_percent'].apply(clean_percentage_value)
+    else:
+        cleaned_change_percent = pd.Series([])
+
     with col2:
-        avg_change = stocks_df['change_percent'].mean() if 'change_percent' in stocks_df.columns else 0
+        # Calculate average change
+        if 'change_percent' in stocks_df.columns:
+            avg_change = cleaned_change_percent.mean()
+        else:
+            avg_change = 0
+        
         st.metric(
             label="Average Change %",
             value=f"{avg_change:.2f}%" if not pd.isna(avg_change) else "N/A",
@@ -1914,14 +1924,24 @@ def main():
         )
     
     with col3:
-        gainers = len(stocks_df[stocks_df['change_percent'] > 0]) if 'change_percent' in stocks_df.columns else 0
+        # Calculate gainers using cleaned data
+        if 'change_percent' in stocks_df.columns:
+            gainers = len(cleaned_change_percent.dropna()[cleaned_change_percent > 0])
+        else:
+            gainers = 0
+
         st.metric(
             label="Gainers",
             value=str(gainers)
         )
     
     with col4:
-        losers = len(stocks_df[stocks_df['change_percent'] < 0]) if 'change_percent' in stocks_df.columns else 0
+        # Calculate losers using cleaned data
+        if 'change_percent' in stocks_df.columns:
+            losers = len(cleaned_change_percent.dropna()[cleaned_change_percent < 0])
+        else:
+            losers = 0
+            
         st.metric(
             label="Losers",
             value=str(losers)
@@ -1932,19 +1952,19 @@ def main():
     
     # Format the display DataFrame
     display_df = stocks_df.copy()
-    if 'change_percent' in display_df.columns:
-        display_df['change_percent'] = display_df['change_percent'].apply(
-            lambda x: f"+{x:.2f}%" if x > 0 else f"{x:.2f}%" if not pd.isna(x) else "N/A"
-        )
+    # if 'change_percent' in display_df.columns:
+    #     display_df['change_percent'] = display_df['change_percent'].apply(
+    #         lambda x: f"+{x:.2f}%" if x > 0 else f"{x:.2f}%" if not pd.isna(x) else "N/A"
+    #     )
     
     # Remove unwanted columns - specify the columns you want to keep
-    columns_to_remove = ['week_52_range', 'Region', 'Follow', 'scrape_date']
+    columns_to_remove = ['id','week_52_range', 'Region', 'Follow', 'scrape_date']
     # Filter to only include columns that actually exist in the DataFrame
     # available_columns = [col for col in columns_to_remove if col in display_df.columns]
     display_df = display_df.drop(columns=[col for col in columns_to_remove if col in display_df.columns])
     
     # volume column should be displayed in string human redable
-    # display_df['volume'] = display_df['volume'].apply(human_readable)
+    display_df['volume'] = display_df['volume'].apply(human_readable)
     
     # Add clickable functionality with on_select
     selected_rows = st.dataframe(
@@ -2111,7 +2131,7 @@ def main():
             
             if options_df is None:
                 st.info(f"No cached options data found for {options_symbol}. Click 'Fetch Options Data' to load live data.")
-        analys_df = temp.assign_df(selected_symbol)
+        analys_df = temp.assign_df(options_symbol)
         
         if options_df is not None and not options_df.empty:
             # Display options metrics
