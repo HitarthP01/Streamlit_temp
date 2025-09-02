@@ -2111,7 +2111,7 @@ def main():
             
             if options_df is None:
                 st.info(f"No cached options data found for {options_symbol}. Click 'Fetch Options Data' to load live data.")
-        analys_df = temp.assign_df(selected_symbol)
+        analys_df = temp.assign_df(options_symbol)
         
         if options_df is not None and not options_df.empty:
             # Display options metrics
